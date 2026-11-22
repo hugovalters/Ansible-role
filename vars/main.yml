@@ -1,0 +1,18 @@
+# Copyright 2026 Valters Capital, SIA
+# Licensed under the Apache License, Version 2.0.
+# ValtersIT is a trademark of Valters Capital, SIA — see NOTICE.
+# Maintained by Hugo Valters
+---
+# Scanner repository name -> entry-point script in that repository.
+valtersit_scanner_scripts:
+  linux-cve-scanner: valtersit-linux-scan.py
+  docker-cve-scanner: valtersit-docker-scan.py
+  wordpress-cve-scanner: valtersit-wp-scan.py
+  python-cve-scanner: valtersit-python-scan.py
+  nodejs-cve-scanner: valtersit-nodejs-scan.py
+  npm-audit-scanner: valtersit-npm-audit.py
+  ruby-cve-scanner: valtersit-ruby-scan.py
+  dotnet-cve-scanner: valtersit-dotnet-scan.py
+  laravel-cve-scanner: valtersit-laravel-scan.py
+  magento-cve-scanner: valtersit-magento-scan.py
+  kubernetes-cve-scanner: valtersit-k8s-scan.py

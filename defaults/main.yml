@@ -1,0 +1,45 @@
+# Copyright 2026 Valters Capital, SIA
+# Licensed under the Apache License, Version 2.0.
+# ValtersIT is a trademark of Valters Capital, SIA — see NOTICE.
+# Maintained by Hugo Valters
+---
+# Which ValtersIT scanner to run on the host. One of the keys of valtersit_scanner_scripts
+# (vars/main.yml): linux-cve-scanner, docker-cve-scanner, wordpress-cve-scanner,
+# python-cve-scanner, nodejs-cve-scanner, npm-audit-scanner, ruby-cve-scanner,
+# dotnet-cve-scanner, laravel-cve-scanner, magento-cve-scanner, kubernetes-cve-scanner.
+valtersit_scanner: linux-cve-scanner
+
+# Extra command-line arguments for that scanner, as a list, e.g. ["--path", "/var/www/html"].
+valtersit_scan_args: []
+
+# Scanner branch, tag or commit to download. Pin a commit SHA in production.
+valtersit_scanner_ref: main
+valtersit_scanner_base_url: "https://gitlab.com/valtersit"
+
+# ValtersIT API key - keep it in Ansible Vault, never in plain text.
+valtersit_api_key: ""
+
+# Contents of ~/.valtersit/consent.json from a one-time interactive confirmation of each
+# scanner you deploy (run it once by hand, read the notice, type YES). Keep it in Vault too.
+valtersit_consent_json: ""
+
+# Optional stable system identifier (32 hex chars, `openssl rand -hex 16`) - only useful on
+# hosts without /etc/machine-id, such as some containers. Leave empty on normal servers.
+valtersit_system_token: ""
+
+# Where things live on the managed host.
+valtersit_install_dir: "/opt/valtersit/{{ valtersit_scanner }}"
+valtersit_state_dir: /var/lib/valtersit
+valtersit_python: python3
+
+# Run a scan during the play, and fetch its output back to the controller.
+valtersit_run_scan: true
+valtersit_fetch_results: true
+valtersit_results_dir: "{{ playbook_dir }}/valtersit-results"
+
+# Also install a daily cron job on the host.
+valtersit_cron_enabled: false
+valtersit_cron_hour: "3"
+valtersit_cron_minute: "30"
+valtersit_cron_user: root
+valtersit_log_file: "/var/log/valtersit-{{ valtersit_scanner }}.log"

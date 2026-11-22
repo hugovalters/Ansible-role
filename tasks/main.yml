@@ -1,0 +1,124 @@
+# Copyright 2026 Valters Capital, SIA
+# Licensed under the Apache License, Version 2.0.
+# ValtersIT is a trademark of Valters Capital, SIA — see NOTICE.
+# Maintained by Hugo Valters
+---
+- name: Validate role variables
+  ansible.builtin.assert:
+    that:
+      - valtersit_scanner in valtersit_scanner_scripts
+      - valtersit_api_key | length > 0
+      - valtersit_consent_json | length > 0
+      - valtersit_scanner_ref is match('^[A-Za-z0-9._/-]+$')
+      - valtersit_scan_args is sequence and valtersit_scan_args is not string
+    fail_msg: >-
+      Set valtersit_scanner to a supported scanner, valtersit_api_key and valtersit_consent_json
+      (both from Vault), and valtersit_scan_args as a list. See README.md.
+    quiet: true
+
+- name: Check that Python 3 is available on the host
+  ansible.builtin.command:
+    argv: ["{{ valtersit_python }}", "-c", "import sys; assert sys.version_info >= (3, 7)"]
+  changed_when: false
+
+- name: Create install and state directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ valtersit_install_dir }}", mode: "0755" }
+    - { path: "{{ valtersit_state_dir }}", mode: "0700" }
+
+- name: Download the scanner and its client
+  ansible.builtin.get_url:
+    url: "{{ valtersit_scanner_base_url }}/{{ valtersit_scanner }}/-/raw/{{ valtersit_scanner_ref }}/{{ item }}"
+    dest: "{{ valtersit_install_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+    force: true
+  loop:
+    - "{{ valtersit_scanner_scripts[valtersit_scanner] }}"
+    - valtersit_client.py
+
+- name: Install the authorised-use confirmation
+  ansible.builtin.copy:
+    content: "{{ valtersit_consent_json if valtersit_consent_json is string else (valtersit_consent_json | to_json) }}"
+    dest: "{{ valtersit_state_dir }}/consent.json"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Install the stable system token
+  ansible.builtin.copy:
+    content: "{{ valtersit_system_token }}"
+    dest: "{{ valtersit_state_dir }}/fingerprint_v2"
+    owner: root
+    group: root
+    mode: "0600"
+  when: valtersit_system_token | length > 0
+  no_log: true
+
+- name: Write the API key environment file
+  ansible.builtin.copy:
+    content: |
+      VALTERSIT_API_KEY={{ valtersit_api_key | quote }}
+      VALTERSIT_STATE_DIR={{ valtersit_state_dir | quote }}
+    dest: "{{ valtersit_state_dir }}/env"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Schedule a daily scan
+  ansible.builtin.cron:
+    name: "ValtersIT {{ valtersit_scanner }}"
+    user: "{{ valtersit_cron_user }}"
+    hour: "{{ valtersit_cron_hour }}"
+    minute: "{{ valtersit_cron_minute }}"
+    job: "set -a && . {{ valtersit_state_dir | quote }}/env && set +a && {{ valtersit_cron_cmd }} >> {{ valtersit_log_file | quote }} 2>&1"
+    state: "{{ 'present' if valtersit_cron_enabled | bool else 'absent' }}"
+  vars:
+    valtersit_cron_cmd: "{{ ([valtersit_python, valtersit_install_dir ~ '/' ~ valtersit_scanner_scripts[valtersit_scanner], '--yes'] + valtersit_scan_args) | map('quote') | join(' ') }}"
+
+- name: Run the scan
+  ansible.builtin.command:
+    argv: "{{ [valtersit_python, valtersit_install_dir ~ '/' ~ valtersit_scanner_scripts[valtersit_scanner], '--yes']
+              + valtersit_scan_args }}"
+  environment:
+    VALTERSIT_API_KEY: "{{ valtersit_api_key }}"
+    VALTERSIT_STATE_DIR: "{{ valtersit_state_dir }}"
+  register: valtersit_scan
+  changed_when: false
+  failed_when: false
+  when: valtersit_run_scan | bool
+
+- name: Show the scan result
+  ansible.builtin.debug:
+    msg: "{{ valtersit_scan.stdout_lines[-25:] + (valtersit_scan.stderr_lines | default([])) }}"
+  when: valtersit_run_scan | bool
+
+- name: Save the scan output on the host
+  ansible.builtin.copy:
+    content: "{{ valtersit_scan.stdout }}\n{{ valtersit_scan.stderr }}\n"
+    dest: "{{ valtersit_state_dir }}/last-scan-{{ valtersit_scanner }}.txt"
+    owner: root
+    group: root
+    mode: "0600"
+  when: valtersit_run_scan | bool
+
+- name: Fetch the scan output to the controller
+  ansible.builtin.fetch:
+    src: "{{ valtersit_state_dir }}/last-scan-{{ valtersit_scanner }}.txt"
+    dest: "{{ valtersit_results_dir }}/{{ inventory_hostname }}-{{ valtersit_scanner }}.txt"
+    flat: true
+  when: valtersit_run_scan | bool and valtersit_fetch_results | bool
+
+- name: Fail if the scan did not complete
+  ansible.builtin.fail:
+    msg: "{{ valtersit_scanner }} exited with code {{ valtersit_scan.rc }} - see the output above."
+  when: valtersit_run_scan | bool and valtersit_scan.rc != 0
